@@ -8,8 +8,6 @@ import {
   setDoc,
   updateDoc,
   getDoc,
-  updateDoc,
-  getDoc,
   onSnapshot
 } from 'firebase/firestore';
 import {
@@ -17,7 +15,9 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   onAuthStateChanged,
-  signOut
+  signOut,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 
 // --- CONFIGURATION ---
@@ -110,10 +110,12 @@ onAuthStateChanged(auth, (user) => {
 
 elements.loginBtn.onclick = async () => {
   try {
+    // Set persistence to Local to survive session clears/redirect issues
+    await setPersistence(auth, browserLocalPersistence);
     await signInWithPopup(auth, provider);
   } catch (error) {
     console.error("Login failed:", error);
-    alert("Authentication failed. Please check your Firebase console for Google Auth settings.");
+    alert(`Authentication failed: ${error.message}`);
   }
 };
 
