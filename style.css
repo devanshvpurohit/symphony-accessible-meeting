@@ -1,337 +1,352 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap');
+
 :root {
-  --bg-dark: #202124;
-  --bg-panel: #3c4043;
-  --bg-hover: #4a4d51;
-  --primary: #8ab4f8;
-  --danger: #ea4335;
-  --text: #ffffff;
-  --text-dim: #e8eaed;
-  --google-blue: #1a73e8;
+  --bg-deep: #0a0b10;
+  --bg-surface: rgba(255, 255, 255, 0.05);
+  --accent-primary: #6366f1;
+  /* Indigo */
+  --accent-secondary: #a855f7;
+  /* Purple */
+  --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  --danger: #ef4444;
+  --success: #22c55e;
+  --text-main: #f8fafc;
+  --text-dim: #94a3b8;
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-blur: blur(12px);
 }
 
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  font-family: 'Outfit', sans-serif;
 }
 
 body {
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
-  background-color: var(--bg-dark);
-  color: var(--text);
+  background-color: var(--bg-deep);
+  color: var(--text-main);
   height: 100vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-/* Auth / Setup Screen (Landing) */
+/* --- Landing Page / Auth / Setup --- */
 #setupOverlay {
   position: fixed;
   inset: 0;
-  background: #fff;
-  color: #202124;
+  background: radial-gradient(circle at top right, #1e1b4b, #000);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  transition: opacity 0.5s ease;
+}
+
+#setupOverlay.fade-out {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .setup-card {
-  display: flex;
+  background: var(--bg-surface);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  padding: 48px;
   width: 90%;
-  max-width: 1000px;
-  gap: 40px;
-  align-items: center;
+  max-width: 500px;
+  text-align: center;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  animation: float 6s ease-in-out infinite;
 }
 
-.setup-left {
-  flex: 1.2;
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
 }
 
-.setup-left h1 {
-  font-size: 44px;
-  margin-bottom: 16px;
-  font-weight: 400;
+.setup-card h1 {
+  font-size: 42px;
+  font-weight: 600;
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
 }
 
-.setup-left p {
-  font-size: 18px;
-  color: #5f6368;
-  line-height: 1.5;
-  margin-bottom: 40px;
+.setup-card p {
+  color: var(--text-dim);
+  margin-bottom: 32px;
 }
 
-.setup-right {
-  flex: 0.8;
-  background: #f8f9fa;
-  padding: 40px;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.3);
-}
-
-.setup-btn {
+.btn-premium {
+  padding: 14px 28px;
+  border-radius: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  padding: 12px 24px;
-  border-radius: 4px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid #dadce0;
-  background: #fff;
-  color: #3c4043;
-  font-size: 14px;
-  transition: background 0.2s;
 }
 
-.setup-btn:hover {
-  background: #f1f3f4;
+.btn-premium.primary {
+  background: var(--accent-gradient);
+  color: white;
+  box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3);
 }
 
-.setup-btn.primary {
-  background: var(--google-blue);
-  color: #fff;
-  border: none;
+.btn-premium.primary:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 20px 25px -5px rgba(99, 102, 241, 0.4);
 }
 
-.setup-btn.primary:hover {
-  background: #1765cc;
+.btn-premium.secondary {
+  background: var(--bg-surface);
+  color: white;
+  border: 1px solid var(--glass-border);
 }
 
-.input-google {
+.btn-premium.secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.input-premium {
   width: 100%;
-  padding: 12px 16px;
-  border: 1px solid #dadce0;
-  border-radius: 4px;
+  padding: 14px 20px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  color: white;
+  margin-bottom: 16px;
   font-size: 16px;
-  margin-bottom: 20px;
   outline: none;
+  transition: border-color 0.3s;
 }
 
-.input-google:focus {
-  border: 2px solid var(--google-blue);
-  padding: 11px 15px;
+.input-premium:focus {
+  border-color: var(--accent-primary);
 }
 
-/* Main Video Area */
+/* --- Main Call Layout --- */
 #mainWrapper {
   flex: 1;
-  display: flex;
   position: relative;
-  background: var(--bg-dark);
+  display: flex;
+  padding: 20px;
+  gap: 20px;
 }
 
 main {
   flex: 1;
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+  border-radius: 24px;
+  overflow: hidden;
+  background: #111;
 }
 
-.video-grid {
-  display: flex;
-  gap: 16px;
+.video-view {
   width: 100%;
   height: 100%;
-  justify-content: center;
-  align-items: center;
+  object-fit: cover;
+  border-radius: 24px;
+  transition: all 0.5s ease;
 }
 
-.video-container {
-  flex: 1;
-  height: 100%;
-  border-radius: 8px;
+/* Host PIP (Local) */
+#localVideoContainer {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  width: 240px;
+  aspect-ratio: 16/9;
+  border-radius: 16px;
   overflow: hidden;
-  position: relative;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  border: 2px solid var(--glass-border);
+  z-index: 100;
   background: #000;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-#remoteVideo,
 #webcamVideo {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.participant-label {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 6px 12px;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: 500;
-  color: white;
-  z-index: 5;
-}
-
-/* Captions Overlay (Meet Style) */
+/* --- Captions & Overlays --- */
 #captionOverlay {
   position: absolute;
-  bottom: 0px;
+  bottom: 100px;
   left: 50%;
   transform: translateX(-50%);
-  width: 100%;
-  background: transparent;
-  color: #fff;
-  padding: 10px;
-  text-align: center;
-  font-size: 24px;
-  font-weight: 400;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-  z-index: 10;
-  min-height: 80px;
-}
-
-/* Control Bar (Modern Meet style) */
-.control-bar {
-  height: 80px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  background: var(--bg-dark);
-}
-
-.corner-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 250px;
-}
-
-.meeting-time {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  padding: 12px 24px;
+  border-radius: 12px;
+  color: white;
   font-size: 18px;
-  margin-right: 12px;
+  max-width: 80%;
+  text-align: center;
+  z-index: 50;
+  border: 1px solid var(--glass-border);
 }
 
-.controls-center {
+/* --- Control Bar --- */
+.control-bar {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  height: 100px;
+  gap: 16px;
+  padding: 0 40px;
+  position: relative;
+}
+
+.control-group {
+  display: flex;
+  background: var(--bg-surface);
+  backdrop-filter: var(--glass-blur);
+  padding: 10px;
+  border-radius: 20px;
+  border: 1px solid var(--glass-border);
+  gap: 10px;
 }
 
 .icon-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 1px solid #5f6368;
-  background: transparent;
-  color: white;
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s;
+  background: transparent;
+  color: var(--text-main);
+  border: none;
+}
+
+.icon-btn i {
+  font-size: 24px;
 }
 
 .icon-btn:hover {
   background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.05);
 }
 
 .icon-btn.active {
-  background: var(--bg-panel);
-  border: none;
+  background: white;
+  color: black;
 }
 
 .icon-btn.danger {
   background: var(--danger);
-  border: none;
-  width: 56px;
-  border-radius: 28px;
+  color: white;
 }
 
 .icon-btn.danger:hover {
-  background: #d93025;
+  background: #ff5f5f;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
 }
 
-.icon-btn.on {
-  background: white;
-  color: #3c4043;
-  border: none;
+/* side info */
+.meeting-details {
+  position: absolute;
+  left: 40px;
+  color: var(--text-dim);
 }
 
-.controls-right {
+.extra-controls {
+  position: absolute;
+  right: 40px;
   display: flex;
-  gap: 12px;
-  min-width: 250px;
-  justify-content: flex-end;
+  gap: 10px;
 }
 
-/* Side Panels */
+/* Side Panel (Chat) */
 #sidePanel {
-  width: 360px;
-  background: white;
-  color: #202124;
-  margin: 16px;
-  border-radius: 8px;
+  width: 380px;
+  background: var(--bg-surface);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  transition: all 0.3s ease;
 }
 
 .panel-header {
   padding: 24px;
+  border-bottom: 1px solid var(--glass-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-weight: 600;
   font-size: 18px;
 }
 
 #chatMessages {
   flex: 1;
+  padding: 20px;
   overflow-y: auto;
-  padding: 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .chat-bubble {
-  margin-bottom: 24px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  max-width: 85%;
+}
+
+.chat-bubble.local {
+  align-self: flex-end;
+  background: var(--accent-gradient);
 }
 
 .chat-bubble-name {
   font-size: 12px;
-  font-weight: 500;
+  color: var(--text-dim);
   margin-bottom: 4px;
-  color: #5f6368;
 }
 
-.chat-bubble-text {
-  font-size: 14px;
-  line-height: 1.4;
+.chat-bubble.local .chat-bubble-name {
+  color: rgba(255, 255, 255, 0.7);
 }
 
-.chat-input-container {
-  padding: 24px;
+/* Hide Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
 }
 
-/* Gesture Toast */
-#gestureToast {
-  position: absolute;
-  top: 40px;
-  right: 40px;
-  background: white;
-  color: #202124;
-  padding: 12px 20px;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  font-weight: 500;
-  opacity: 0;
-  transition: transform 0.3s, opacity 0.3s;
-  transform: translateY(-20px);
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-#gestureToast.show {
-  opacity: 1;
-  transform: translateY(0);
+::-webkit-scrollbar-thumb {
+  background: var(--bg-surface);
+  border-radius: 10px;
 }
 
-/* Hidden elements */
+/* Hidden */
 .hidden {
   display: none !important;
 }
