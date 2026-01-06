@@ -63,7 +63,6 @@ const elements = {
   userDisplayName: document.getElementById('userDisplayName'),
   webcamButton: document.getElementById('webcamButton'),
   webcamVideo: document.getElementById('webcamVideo'),
-  callButton: document.getElementById('callButton'),
   callInput: document.getElementById('callInput'),
   answerButton: document.getElementById('answerButton'),
   remoteVideo: document.getElementById('remoteVideo'),
@@ -125,121 +124,143 @@ updateClock();
 
 // --- WEBRTC CORE ---
 
-/** Initialize Webcam and Mic */
+// 1. Setup Remote Video once
+elements.remoteVideo.srcObject = remoteStream;
+
+pc.ontrack = (event) => {
+  event.streams[0].getTracks().forEach((track) => {
+    remoteStream.addTrack(track);
+  });
+  console.log("Remote track added to stream");
+};
+
+/** Start Meeting (Host) */
 elements.webcamButton.onclick = async () => {
   try {
+    // 1. Get local media
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-
     elements.webcamVideo.srcObject = localStream;
-    elements.remoteVideo.srcObject = remoteStream;
 
+    // 2. Add tracks to peer connection
     localStream.getTracks().forEach((track) => {
       pc.addTrack(track, localStream);
     });
 
-    pc.ontrack = (event) => {
-      if (elements.remoteVideo.srcObject !== event.streams[0]) {
-        elements.remoteVideo.srcObject = event.streams[0];
-      }
-    };
-
+    // 3. UI Transition
     elements.setupOverlay.classList.add('hidden');
     elements.mainWrapper.classList.remove('hidden');
     elements.bottomBar.classList.remove('hidden');
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const meetingId = urlParams.get('id');
-    if (meetingId) {
-      elements.callInput.value = meetingId;
-    }
+    // 4. Create Offer (Signaling)
+    setupDataChannel(pc.createDataChannel('symphony-data'));
+
+    const callDocRef = doc(collection(db, 'calls'));
+    const offerCandidates = collection(callDocRef, 'offerCandidates');
+    const answerCandidates = collection(callDocRef, 'answerCandidates');
+
+    const callId = callDocRef.id;
+    elements.displayMeetId.innerText = callId;
+
+    pc.onicecandidate = (event) => {
+      event.candidate && addDoc(offerCandidates, event.candidate.toJSON());
+    };
+
+    const offerDescription = await pc.createOffer();
+    await pc.setLocalDescription(offerDescription);
+
+    const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
+    await setDoc(callDocRef, { offer });
+
+    // Listen for Answer
+    onSnapshot(callDocRef, (snapshot) => {
+      const data = snapshot.data();
+      if (!pc.currentRemoteDescription && data?.answer) {
+        pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+      }
+    });
+
+    // Listen for Answer Candidates
+    onSnapshot(answerCandidates, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added' && pc.remoteDescription) {
+          pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(e => console.error(e));
+        }
+      });
+    });
 
     initGestureRecognition();
     initSpeechRecognition();
   } catch (err) {
-    console.error("Error accessing media devices:", err);
-    alert("Camera/Mic access is required.");
+    console.error("Error starting meeting:", err);
+    alert("Camera/Mic access is required to host a meeting.");
   }
 };
 
-/** Create Offer */
-elements.callButton.onclick = async () => {
-  setupDataChannel(pc.createDataChannel('symphony-data'));
-
-  const callDocRef = doc(collection(db, 'calls'));
-  const offerCandidates = collection(callDocRef, 'offerCandidates');
-  const answerCandidates = collection(callDocRef, 'answerCandidates');
-
-  const callId = callDocRef.id;
-  elements.displayMeetId.innerText = callId;
-
-  pc.onicecandidate = (event) => {
-    event.candidate && addDoc(offerCandidates, event.candidate.toJSON());
-  };
-
-  const offerDescription = await pc.createOffer();
-  await pc.setLocalDescription(offerDescription);
-
-  const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
-  await setDoc(callDocRef, { offer });
-
-  onSnapshot(callDocRef, (snapshot) => {
-    const data = snapshot.data();
-    if (!pc.currentRemoteDescription && data?.answer) {
-      pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-    }
-  });
-
-  onSnapshot(answerCandidates, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      if (change.type === 'added' && pc.remoteDescription) {
-        pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(e => console.error(e));
-      }
-    });
-  });
-};
-
-/** Join Call */
+/** Join Meeting (Guest) */
 elements.answerButton.onclick = async () => {
-  const callId = elements.callInput.value;
+  const callId = elements.callInput.value.trim();
   if (!callId) return alert("Please enter a Meeting ID");
 
-  const callDocRef = doc(db, 'calls', callId);
-  const answerCandidates = collection(callDocRef, 'answerCandidates');
-  const offerCandidates = collection(callDocRef, 'offerCandidates');
+  try {
+    // 1. Get local media
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    elements.webcamVideo.srcObject = localStream;
 
-  elements.displayMeetId.innerText = callId;
-
-  pc.ondatachannel = (event) => {
-    setupDataChannel(event.channel);
-  };
-
-  pc.onicecandidate = (event) => {
-    event.candidate && addDoc(answerCandidates, event.candidate.toJSON());
-  };
-
-  const callData = (await getDoc(callDocRef)).data();
-  if (!callData) return alert("Call not found");
-
-  await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
-  const answerDescription = await pc.createAnswer();
-  await pc.setLocalDescription(answerDescription);
-
-  await updateDoc(callDocRef, { answer: { type: answerDescription.type, sdp: answerDescription.sdp } });
-
-  onSnapshot(offerCandidates, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      if (change.type === 'added' && pc.remoteDescription) {
-        pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(e => console.error(e));
-      }
+    // 2. Add tracks
+    localStream.getTracks().forEach((track) => {
+      pc.addTrack(track, localStream);
     });
-  });
+
+    // 3. UI Transition
+    elements.setupOverlay.classList.add('hidden');
+    elements.mainWrapper.classList.remove('hidden');
+    elements.bottomBar.classList.remove('hidden');
+    elements.displayMeetId.innerText = callId;
+
+    // 4. Signaling (Join)
+    const callDocRef = doc(db, 'calls', callId);
+    const answerCandidates = collection(callDocRef, 'answerCandidates');
+    const offerCandidates = collection(callDocRef, 'offerCandidates');
+
+    pc.ondatachannel = (event) => {
+      setupDataChannel(event.channel);
+    };
+
+    pc.onicecandidate = (event) => {
+      event.candidate && addDoc(answerCandidates, event.candidate.toJSON());
+    };
+
+    const callData = (await getDoc(callDocRef)).data();
+    if (!callData) return alert("Call not found. Check the ID.");
+
+    await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
+    const answerDescription = await pc.createAnswer();
+    await pc.setLocalDescription(answerDescription);
+
+    await updateDoc(callDocRef, { answer: { type: answerDescription.type, sdp: answerDescription.sdp } });
+
+    // Listen for Offer Candidates
+    onSnapshot(offerCandidates, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added' && pc.remoteDescription) {
+          pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(e => console.error(e));
+        }
+      });
+    });
+
+    initGestureRecognition();
+    initSpeechRecognition();
+  } catch (err) {
+    console.error("Error joining meeting:", err);
+    alert("Camera/Mic access is required to join.");
+  }
 };
 
 // --- DATA CHANNEL & CHAT ---
 
 function setupDataChannel(channel) {
   dataChannel = channel;
-  dataChannel.onopen = () => appendMessage("System", "You can now chat with other participants");
+  dataChannel.onopen = () => appendMessage("System", "Chat connected");
 
   dataChannel.onmessage = (event) => {
     const data = JSON.parse(event.data);
