@@ -15,7 +15,6 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   onAuthStateChanged,
-  signOut,
   setPersistence,
   browserLocalPersistence
 } from 'firebase/auth';
@@ -55,6 +54,7 @@ let remoteStream = new MediaStream();
 let recognition = null;
 let isMuted = false;
 let isVideoOff = false;
+let isCaptionsOn = false;
 
 // HTML Elements
 const elements = {
@@ -70,9 +70,7 @@ const elements = {
   hangupButton: document.getElementById('hangupButton'),
   setupOverlay: document.getElementById('setupOverlay'),
   setupInitial: document.getElementById('setupInitial'),
-  setupActions: document.getElementById('setupActions'),
   displayMeetId: document.getElementById('displayMeetId'),
-  activeCallInfo: document.getElementById('activeCallInfo'),
   captionOverlay: document.getElementById('captionOverlay'),
   gestureCanvas: document.getElementById('gestureCanvas'),
   gestureToast: document.getElementById('gestureToast'),
@@ -87,10 +85,11 @@ const elements = {
   chatInput: document.getElementById('chatInput'),
   sendChatBtn: document.getElementById('sendChatBtn'),
   copyBtn: document.getElementById('copyBtn'),
-  connectionStatus: document.getElementById('connectionStatus'),
-  sttStatus: document.getElementById('sttStatus'),
+  mainWrapper: document.getElementById('mainWrapper'),
+  bottomBar: document.getElementById('bottomBar'),
+  meetTime: document.getElementById('meetTime'),
   signapseContainer: document.getElementById('signapseContainer'),
-  avatarPlaceholder: document.querySelector('#avatarPlaceholder p')
+  closePanelBtn: document.getElementById('closePanelBtn')
 };
 
 // --- AUTH LOGIC ---
@@ -99,18 +98,15 @@ onAuthStateChanged(auth, (user) => {
   if (user) {
     elements.loginSection.classList.add('hidden');
     elements.setupInitial.classList.remove('hidden');
-    elements.userDisplayName.innerText = `Welcome, ${user.displayName}`;
-    console.log("Logged in as:", user.email);
+    elements.userDisplayName.innerText = `Signed in as ${user.displayName}`;
   } else {
     elements.loginSection.classList.remove('hidden');
     elements.setupInitial.classList.add('hidden');
-    elements.setupActions.classList.add('hidden');
   }
 });
 
 elements.loginBtn.onclick = async () => {
   try {
-    // Set persistence to Local to survive session clears/redirect issues
     await setPersistence(auth, browserLocalPersistence);
     await signInWithPopup(auth, provider);
   } catch (error) {
@@ -119,6 +115,14 @@ elements.loginBtn.onclick = async () => {
   }
 };
 
+// --- CLOCK ---
+function updateClock() {
+  const now = new Date();
+  elements.meetTime.innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
 // --- WEBRTC CORE ---
 
 /** Initialize Webcam and Mic */
@@ -126,29 +130,23 @@ elements.webcamButton.onclick = async () => {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
 
-    // Attach local stream to video element
     elements.webcamVideo.srcObject = localStream;
     elements.remoteVideo.srcObject = remoteStream;
 
-    // Add local tracks to peer connection
     localStream.getTracks().forEach((track) => {
       pc.addTrack(track, localStream);
     });
 
-    // Handle remote tracks
     pc.ontrack = (event) => {
-      console.log("Remote stream received:", event.streams[0]);
       if (elements.remoteVideo.srcObject !== event.streams[0]) {
         elements.remoteVideo.srcObject = event.streams[0];
       }
-      elements.connectionStatus.innerText = "Connected";
-      elements.connectionStatus.style.color = "var(--accent)";
     };
 
-    elements.setupInitial.classList.add('hidden');
-    elements.setupActions.classList.remove('hidden');
+    elements.setupOverlay.classList.add('hidden');
+    elements.mainWrapper.classList.remove('hidden');
+    elements.bottomBar.classList.remove('hidden');
 
-    // Check for ID in URL to auto-fill
     const urlParams = new URLSearchParams(window.location.search);
     const meetingId = urlParams.get('id');
     if (meetingId) {
@@ -165,7 +163,6 @@ elements.webcamButton.onclick = async () => {
 
 /** Create Offer */
 elements.callButton.onclick = async () => {
-  // Create accessibility and chat data channel
   setupDataChannel(pc.createDataChannel('symphony-data'));
 
   const callDocRef = doc(collection(db, 'calls'));
@@ -173,10 +170,7 @@ elements.callButton.onclick = async () => {
   const answerCandidates = collection(callDocRef, 'answerCandidates');
 
   const callId = callDocRef.id;
-  elements.displayMeetId.innerText = `ID: ${callId}`;
-  elements.activeCallInfo.classList.remove('hidden');
-  elements.setupOverlay.classList.add('hidden');
-  elements.connectionStatus.innerText = "Waiting for remote...";
+  elements.displayMeetId.innerText = callId;
 
   pc.onicecandidate = (event) => {
     event.candidate && addDoc(offerCandidates, event.candidate.toJSON());
@@ -185,28 +179,20 @@ elements.callButton.onclick = async () => {
   const offerDescription = await pc.createOffer();
   await pc.setLocalDescription(offerDescription);
 
-  const offer = {
-    sdp: offerDescription.sdp,
-    type: offerDescription.type,
-  };
-
+  const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
   await setDoc(callDocRef, { offer });
 
-  // Listen for answer
   onSnapshot(callDocRef, (snapshot) => {
     const data = snapshot.data();
     if (!pc.currentRemoteDescription && data?.answer) {
-      const answerDescription = new RTCSessionDescription(data.answer);
-      pc.setRemoteDescription(answerDescription);
+      pc.setRemoteDescription(new RTCSessionDescription(data.answer));
     }
   });
 
-  // Add remote candidates
   onSnapshot(answerCandidates, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added' && pc.remoteDescription) {
-        const candidate = new RTCIceCandidate(change.doc.data());
-        pc.addIceCandidate(candidate).catch(e => console.error("Error adding answer candidate", e));
+        pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(e => console.error(e));
       }
     });
   });
@@ -221,10 +207,7 @@ elements.answerButton.onclick = async () => {
   const answerCandidates = collection(callDocRef, 'answerCandidates');
   const offerCandidates = collection(callDocRef, 'offerCandidates');
 
-  elements.displayMeetId.innerText = `ID: ${callId}`;
-  elements.activeCallInfo.classList.remove('hidden');
-  elements.setupOverlay.classList.add('hidden');
-  elements.connectionStatus.innerText = "Joining...";
+  elements.displayMeetId.innerText = callId;
 
   pc.ondatachannel = (event) => {
     setupDataChannel(event.channel);
@@ -237,24 +220,16 @@ elements.answerButton.onclick = async () => {
   const callData = (await getDoc(callDocRef)).data();
   if (!callData) return alert("Call not found");
 
-  const offerDescription = callData.offer;
-  await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
-
+  await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
   const answerDescription = await pc.createAnswer();
   await pc.setLocalDescription(answerDescription);
 
-  const answer = {
-    type: answerDescription.type,
-    sdp: answerDescription.sdp,
-  };
+  await updateDoc(callDocRef, { answer: { type: answerDescription.type, sdp: answerDescription.sdp } });
 
-  await updateDoc(callDocRef, { answer });
-
-  // Add offerer candidates
   onSnapshot(offerCandidates, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added' && pc.remoteDescription) {
-        pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(e => console.error("Error adding offer candidate", e));
+        pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(e => console.error(e));
       }
     });
   });
@@ -264,17 +239,14 @@ elements.answerButton.onclick = async () => {
 
 function setupDataChannel(channel) {
   dataChannel = channel;
-  dataChannel.onopen = () => {
-    console.log("Data Channel Ready");
-    appendMessage("System", "Chat connected", "remote");
-  };
+  dataChannel.onopen = () => appendMessage("System", "You can now chat with other participants");
 
   dataChannel.onmessage = (event) => {
     const data = JSON.parse(event.data);
     switch (data.type) {
       case 'caption': handleIncomingCaption(data.text); break;
       case 'gesture': handleIncomingGesture(data.gesture); break;
-      case 'chat': appendMessage("Remote", data.text, "remote"); break;
+      case 'chat': appendMessage("Participant", data.text); break;
     }
   };
 }
@@ -283,15 +255,15 @@ function sendChatMessage() {
   const text = elements.chatInput.value.trim();
   if (text && dataChannel?.readyState === 'open') {
     dataChannel.send(JSON.stringify({ type: 'chat', text }));
-    appendMessage("You", text, "local");
+    appendMessage("You", text);
     elements.chatInput.value = "";
   }
 }
 
-function appendMessage(sender, text, type) {
+function appendMessage(sender, text) {
   const msgDiv = document.createElement('div');
-  msgDiv.className = `chat-msg ${type}`;
-  msgDiv.innerHTML = `<strong>${sender}:</strong> ${text}`;
+  msgDiv.className = 'chat-bubble';
+  msgDiv.innerHTML = `<div class="chat-bubble-name">${sender}</div><div class="chat-bubble-text">${text}</div>`;
   elements.chatMessages.appendChild(msgDiv);
   elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
 }
@@ -301,7 +273,6 @@ elements.chatInput.onkeypress = (e) => e.key === 'Enter' && sendChatMessage();
 
 // --- ACCESSIBILITY ACTIONS ---
 
-/** 1. Speech-to-Text */
 function initSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) return;
@@ -320,60 +291,32 @@ function initSpeechRecognition() {
       dataChannel.send(JSON.stringify({ type: 'caption', text: transcript }));
     }
   };
-
   recognition.start();
-  elements.sttStatus.classList.remove('hidden');
 }
 
 function handleIncomingCaption(text) {
+  if (!isCaptionsOn) return;
   elements.captionOverlay.innerText = text;
-  elements.captionOverlay.classList.remove('hidden');
-  elements.avatarPlaceholder.innerText = "Signing: " + text.substring(0, 30) + "...";
-
   clearTimeout(elements.captionOverlay.timeout);
-  elements.captionOverlay.timeout = setTimeout(() => {
-    elements.captionOverlay.classList.add('hidden');
-  }, 4000);
+  elements.captionOverlay.timeout = setTimeout(() => { elements.captionOverlay.innerText = ""; }, 4000);
 }
 
-/** 2. Hand Gestures */
 async function initGestureRecognition() {
-  const resizeCanvas = () => {
-    elements.gestureCanvas.width = elements.webcamVideo.videoWidth || 640;
-    elements.gestureCanvas.height = elements.webcamVideo.videoHeight || 480;
-  };
-  elements.webcamVideo.onplay = resizeCanvas;
-
-  const hands = new Hands({
-    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-  });
-
-  hands.setOptions({
-    maxNumHands: 1,
-    modelComplexity: 1,
-    minDetectionConfidence: 0.7,
-    minTrackingConfidence: 0.7
-  });
-
+  const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+  hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
   hands.onResults(onHandResults);
 
   const camera = new Camera(elements.webcamVideo, {
-    onFrame: async () => {
-      await hands.send({ image: elements.webcamVideo });
-    },
-    width: 640,
-    height: 480
+    onFrame: async () => { await hands.send({ image: elements.webcamVideo }); },
+    width: 640, height: 480
   });
   camera.start();
 }
 
 function onHandResults(results) {
-  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    const landmarks = results.multiHandLandmarks[0];
-    const gesture = detectSimpleGesture(landmarks);
-    if (gesture && gesture !== lastGesture) {
-      handleLocalGesture(gesture);
-    }
+  if (results.multiHandLandmarks?.length > 0) {
+    const gesture = detectSimpleGesture(results.multiHandLandmarks[0]);
+    if (gesture && gesture !== lastGesture) handleLocalGesture(gesture);
   }
 }
 
@@ -382,133 +325,80 @@ let gestureCooldown = false;
 
 const ASL_ALPHABET = {
   A: (lm) => isFolded(lm, 8) && isFolded(lm, 12) && isFolded(lm, 16) && isFolded(lm, 20) && lm[4].y < lm[3].y,
-  B: (lm) => !isFolded(lm, 8) && !isFolded(lm, 12) && !isFolded(lm, 16) && !isFolded(lm, 20) && lm[4].x > lm[3].x, // Simplified
-  C: (lm) => !isFolded(lm, 8) && lm[8].y < lm[5].y && Math.abs(lm[4].x - lm[20].x) > 0.1, // Curved palm
-  D: (lm) => !isFolded(lm, 8) && isFolded(lm, 12) && isFolded(lm, 16) && isFolded(lm, 20),
-  E: (lm) => isFolded(lm, 8) && isFolded(lm, 12) && isFolded(lm, 16) && isFolded(lm, 20) && lm[8].y > lm[7].y,
-  F: (lm) => isFolded(lm, 8) && !isFolded(lm, 12) && !isFolded(lm, 16) && !isFolded(lm, 20) && dist(lm[4], lm[8]) < 0.05,
-  G: (lm) => !isFolded(lm, 8) && isFolded(lm, 12) && isFolded(lm, 16) && isFolded(lm, 20) && lm[8].x < lm[5].x,
-  H: (lm) => !isFolded(lm, 8) && !isFolded(lm, 12) && isFolded(lm, 16) && isFolded(lm, 20) && Math.abs(lm[8].y - lm[12].y) < 0.05,
-  I: (lm) => isFolded(lm, 8) && isFolded(lm, 12) && isFolded(lm, 16) && !isFolded(lm, 20),
-  K: (lm) => !isFolded(lm, 8) && !isFolded(lm, 12) && isFolded(lm, 16) && isFolded(lm, 20) && dist(lm[4], lm[10]) < 0.05,
+  B: (lm) => !isFolded(lm, 8) && !isFolded(lm, 12) && !isFolded(lm, 16) && !isFolded(lm, 20),
   L: (lm) => !isFolded(lm, 8) && isFolded(lm, 12) && isFolded(lm, 16) && isFolded(lm, 20) && lm[4].x < lm[3].x,
-  O: (lm) => isFolded(lm, 8) && isFolded(lm, 12) && isFolded(lm, 16) && isFolded(lm, 20) && dist(lm[4], lm[8]) < 0.1,
-  R: (lm) => !isFolded(lm, 8) && !isFolded(lm, 12) && isFolded(lm, 16) && isFolded(lm, 20) && lm[12].x < lm[8].x, // Crossed
-  U: (lm) => !isFolded(lm, 8) && !isFolded(lm, 12) && isFolded(lm, 16) && isFolded(lm, 20) && dist(lm[8], lm[12]) < 0.05,
-  V: (lm) => !isFolded(lm, 8) && !isFolded(lm, 12) && isFolded(lm, 16) && isFolded(lm, 20) && dist(lm[8], lm[12]) > 0.1,
-  W: (lm) => !isFolded(lm, 8) && !isFolded(lm, 12) && !isFolded(lm, 16) && isFolded(lm, 20),
-  Y: (lm) => isFolded(lm, 8) && isFolded(lm, 12) && isFolded(lm, 16) && !isFolded(lm, 20) && lm[4].x < lm[3].x,
+  V: (lm) => !isFolded(lm, 8) && !isFolded(lm, 12) && isFolded(lm, 16) && isFolded(lm, 20),
 };
 
-function isFolded(lm, tipIndex) {
-  return lm[tipIndex].y > lm[tipIndex - 2].y;
-}
+function isFolded(lm, tip) { return lm[tip].y > lm[tip - 2].y; }
+function dist(p1, p2) { return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2); }
 
-function dist(p1, p2) {
-  return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
-}
-
-function detectSimpleGesture(landmarks) {
-  for (const [letter, check] of Object.entries(ASL_ALPHABET)) {
-    if (check(landmarks)) return letter;
-  }
-
-  const isThumbUp = landmarks[4].y < landmarks[3].y && landmarks[4].y < landmarks[2].y;
-  const isThumbDown = landmarks[4].y > landmarks[3].y && landmarks[4].y > landmarks[2].y;
-  const isOpenPalm = landmarks[8].y < landmarks[6].y && landmarks[12].y < landmarks[10].y && landmarks[16].y < landmarks[14].y;
-
-  if (isThumbUp && !isOpenPalm) return "YES";
-  if (isThumbDown) return "NO";
-  if (isOpenPalm && landmarks[8].y < landmarks[4].y) return "HELLO";
-
+function detectSimpleGesture(lm) {
+  for (const [letter, check] of Object.entries(ASL_ALPHABET)) { if (check(lm)) return letter; }
+  const isThumbUp = lm[4].y < lm[3].y && lm[4].y < lm[2].y;
+  if (isThumbUp) return "YES";
   return null;
 }
 
 function handleLocalGesture(gesture) {
   if (gestureCooldown) return;
-  lastGesture = gesture;
-  gestureCooldown = true;
-
+  lastGesture = gesture; gestureCooldown = true;
   elements.gestureToast.innerText = `${gesture} 👋`;
-  elements.gestureToast.style.opacity = 1;
-
-  const utterance = new SpeechSynthesisUtterance(gesture);
-  window.speechSynthesis.speak(utterance);
-
-  if (dataChannel?.readyState === 'open') {
-    dataChannel.send(JSON.stringify({ type: 'gesture', gesture }));
-  }
-
-  setTimeout(() => {
-    elements.gestureToast.style.opacity = 0;
-    gestureCooldown = false;
-    lastGesture = null;
-  }, 3000);
+  elements.gestureToast.classList.add('show');
+  window.speechSynthesis.speak(new SpeechSynthesisUtterance(gesture));
+  if (dataChannel?.readyState === 'open') dataChannel.send(JSON.stringify({ type: 'gesture', gesture }));
+  setTimeout(() => { elements.gestureToast.classList.remove('show'); gestureCooldown = false; lastGesture = null; }, 3000);
 }
 
 function handleIncomingGesture(gesture) {
   elements.gestureToast.innerText = `Remote: ${gesture}`;
-  elements.gestureToast.style.opacity = 1;
-  const utterance = new SpeechSynthesisUtterance("Remote user says " + gesture);
-  window.speechSynthesis.speak(utterance);
-  setTimeout(() => elements.gestureToast.style.opacity = 0, 3000);
+  elements.gestureToast.classList.add('show');
+  window.speechSynthesis.speak(new SpeechSynthesisUtterance("Remote user says " + gesture));
+  setTimeout(() => elements.gestureToast.classList.remove('show'), 3000);
 }
 
-// --- CALL CONTROLS ---
+// --- CONTROLS ---
 
 elements.muteBtn.onclick = () => {
   isMuted = !isMuted;
   localStream.getAudioTracks()[0].enabled = !isMuted;
-  elements.muteBtn.classList.toggle('active', isMuted);
-  elements.muteBtn.querySelector('.icon').innerText = isMuted ? '🔇' : '🎤';
-  elements.muteBtn.querySelector('.btn-label').innerText = isMuted ? 'Unmute' : 'Mute';
+  elements.muteBtn.classList.toggle('on', !isMuted);
+  elements.muteBtn.innerHTML = `<span class="material-icons">${isMuted ? 'mic_off' : 'mic'}</span>`;
 };
 
 elements.videoBtn.onclick = () => {
   isVideoOff = !isVideoOff;
   localStream.getVideoTracks()[0].enabled = !isVideoOff;
-  elements.videoBtn.classList.toggle('active', isVideoOff);
-  elements.videoBtn.querySelector('.icon').innerText = isVideoOff ? '📹 Off' : '📹';
+  elements.videoBtn.classList.toggle('on', !isVideoOff);
+  elements.videoBtn.innerHTML = `<span class="material-icons">${isVideoOff ? 'videocam_off' : 'videocam'}</span>`;
+};
+
+elements.captionBtn.onclick = () => {
+  isCaptionsOn = !isCaptionsOn;
+  elements.captionBtn.classList.toggle('on', isCaptionsOn);
+  if (!isCaptionsOn) elements.captionOverlay.innerText = "";
+};
+
+elements.aslBtn.onclick = () => {
+  elements.signapseContainer.classList.toggle('hidden');
+  elements.aslBtn.classList.toggle('on');
 };
 
 elements.shareBtn.onclick = async () => {
   try {
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    const screenTrack = screenStream.getVideoTracks()[0];
     const sender = pc.getSenders().find(s => s.track.kind === 'video');
-    sender.replaceTrack(screenTrack);
-
-    screenTrack.onended = () => {
-      sender.replaceTrack(localStream.getVideoTracks()[0]);
-    };
-  } catch (err) {
-    console.error("Screen share failed:", err);
-  }
+    sender.replaceTrack(screenStream.getVideoTracks()[0]);
+    screenStream.getVideoTracks()[0].onended = () => sender.replaceTrack(localStream.getVideoTracks()[0]);
+  } catch (err) { console.error(err); }
 };
 
-elements.chatBtn.onclick = () => {
-  elements.sidePanel.classList.toggle('hidden');
-  elements.chatBtn.classList.toggle('active');
-};
+elements.chatBtn.onclick = () => elements.sidePanel.classList.toggle('hidden');
+elements.closePanelBtn.onclick = () => elements.sidePanel.classList.add('hidden');
 
 elements.copyBtn.onclick = () => {
-  const url = `${window.location.origin}${window.location.pathname}?id=${elements.displayMeetId.innerText.split(': ')[1]}`;
-  navigator.clipboard.writeText(url).then(() => {
-    alert("Meeting link copied to clipboard!");
-  });
+  const url = `${window.location.origin}/?id=${elements.displayMeetId.innerText}`;
+  navigator.clipboard.writeText(url).then(() => alert("Joining info copied"));
 };
 
-elements.hangupButton.onclick = () => {
-  location.href = window.location.origin + window.location.pathname;
-};
-
-// Toggle features
-elements.captionBtn.onclick = () => {
-  elements.captionOverlay.classList.toggle('hidden');
-  elements.captionBtn.classList.toggle('active');
-};
-
-elements.aslBtn.onclick = () => {
-  elements.signapseContainer.classList.toggle('hidden');
-  elements.aslBtn.classList.toggle('active');
-};
+elements.hangupButton.onclick = () => location.reload();
