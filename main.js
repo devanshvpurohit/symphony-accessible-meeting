@@ -413,7 +413,6 @@ function detectSimpleGesture(landmarks) {
     if (check(landmarks)) return letter;
   }
 
-  // Keep original simple ones as fallback
   const isThumbUp = landmarks[4].y < landmarks[3].y && landmarks[4].y < landmarks[2].y;
   const isThumbDown = landmarks[4].y > landmarks[3].y && landmarks[4].y > landmarks[2].y;
   const isOpenPalm = landmarks[8].y < landmarks[6].y && landmarks[12].y < landmarks[10].y && landmarks[16].y < landmarks[14].y;
